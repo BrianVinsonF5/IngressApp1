@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <style>
+            body {
+                background: #c4c2be;
+                font: 75% sans-serif;
+            }
+            #frame {
+                padding: 5px;
+                width: 960px;
+                margin: 20px auto;
+            }
+            #top {
+                background: #eae9e5;
+                height: 60px;
+                padding: 0 15px;
+            }
+            #leftContent {
+                background: #eae9e5;
+                width: 290px;
+                float: left;
+                padding: 5px 15px;
+            }
+           #mainContent {
+               background: #eae9e5;
+                width: 294px;
+                float: left;
+                padding: 5px 15px;
+                margin: 5px 5px 5px;
+            }
+            #rightContent {
+                background: #eae9e5;
+                width: 270px;
+                padding: 5px 15px;
+                float: left;
+            }
+            footer {
+                background: #eae9e5;
+                height:200px;
+                clear: both;
+                padding: 0 15px;
+            }
+
+            @media screen and (max-width: 980px) {
+
+                #frame {
+                    width: 94%;
+                }
+                #leftContent {
+                    width: 41%;
+                    padding: 1% 4%;
+                }
+                #mainContent {
+                    width: 41%;
+                    padding: 1% 4%;
+                    margin: 5px 5px;
+                    float: right;
+                }
+
+                #rightContent {
+                    clear: both;
+                    padding: 1% 4%;
+                    width: auto;
+                    float: none;
+                }
+
+                #top, footer {
+                    padding: 1% 4%;
+                }
+            }
+
+            @media screen and (max-width: 600px) {
+
+                #leftContent {
+                    width: auto;
+                    float: none;
+                }
+
+                #mainContent {
+                    width: auto;
+                    float: none;
+                    margin-left: 0px;
+                }
+
+                #rightContent {
+                    width: auto;
+                    float: none;
+                }
+
+            }
+
+            @media screen and (max-width: 480px) {
+                #top {
+                    height: auto;
+                }
+               #rightContent {
+                    display: none;
+                }
+
+            }
+            #top, #mainContent, #leftContent, #rightContent {
+                margin-bottom: 5px;
+            }
+            #frame, #top,#mainContent, #leftContent, #rightContent, footer {
+                border: solid 1px #ff0000;
+                color: #333;
+            }
+            #Mainform label { display: block; margin-bottom: 3px; font-weight: bold; }
+            #Mainform input { width: 168px; margin-bottom: 10px; padding: .25em 0; border: 1px solid #bebebe; background: #fff9db; color: #333; font-size: 107%; }
+        </style>
+        <script>
+            function getPolicyNames() {
+                var f5xmlhttp = new XMLHttpRequest();
+                var url = 'https://' + document.getElementById("F5Hostname").value + '/mgmt/tm/asm/policies?\$select=name';
+                f5xmlhttp.onreadystatechange = function() {
+                    if (f5xmlhttp.readyState == 4 && f5xmlhttp.status == 200) {
+                        var myArr = JSON.parse(f5xmlhttp.responseText);
+                        printPolicyListing(myArr);
+                    }
+                };
+                f5xmlhttp.open("GET", url, true, document.getElementById("Username").value, document.getElementById("Password").value);
+                f5xmlhttp.send();
+            }
+
+            function printPolicyListing( myPolicies ) {
+                var out = "";
+				var count = 0;
+                for(var i = 0; i < myPolicies.items.length; i++) {
+                    if((myPolicies.items[i].name.search("MTGSP") == 0) || (myPolicies.items[i].name.search("DSP") == 0)) {
+                        out += '<option value="' + myPolicies.items[i].selfLink + '">' + myPolicies.items[i].name + '</option>';
+						count++;
+                    }
+                }
+                out += '</select>';
+                out += '<br><br><button type="button" onClick="removeSignatures();"> Remove Signature Staging for all selected policies </button>';
+                document.getElementById("policylisting").innerHTML = '<select name="policyselect" multiple size=' + count + '>' + out;
+            }
+
+            function removeSignatures() {
+                var policyhttp = new XMLHttpRequest();
+                var policyForm = document.forms.ListPolicy;
+                var url;
+                var itemcount;
+
+                document.getElementById("signatureStatus").innerHTML = '<b> <legend> Policy Update Status </legend></b> <br>';
+
+                for (var i = 0;i < policyForm.policyselect.length;i++) {
+                    if (policyForm.policyselect[i].selected) {
+                        document.getElementById("signatureStatus").innerHTML += '<br> ' + policyForm.policyselect[i].innerHTML + ': Attempting to remove staging ....   ';
+                        url = 'https://' + document.getElementById("F5Hostname").value + '/mgmt/tm/asm/policies' + policyForm.policyselect[i].value.split("policies")[1] + '/signatures';
+                        policyhttp.open("PATCH", url, false, document.getElementById("Username").value, document.getElementById("Password").value);
+                        policyhttp.setRequestHeader( 'Content-Type', 'application/json');
+                        policyhttp.send(JSON.stringify({ performStaging: false }));
+                        if (policyhttp.status == 201) {
+                            var policyStatus = applyPolicy(policyForm.policyselect[i].value.split("policies")[1]);
+                            if (policyStatus == 201 ) {
+                                itemcount = JSON.parse(policyhttp.responseText).items.length;
+                                document.getElementById("signatureStatus").innerHTML += 'Success with ' + itemcount + ' additional signatures set to enforced and applied';
+                            }
+                        }
+                        else {
+                            document.getElementById("ListPolicy").innerHTML += 'REQUEST FAILED with status code ' + policyhttp.status;
+                        }
+                    }
+                }
+            }
+            function applyPolicy(policyReferenceURL) {
+                console.log(policyReferenceURL)
+                var policyApplyHttp = new XMLHttpRequest();
+                url = 'https://' + document.getElementById("F5Hostname").value + '/mgmt/tm/asm/tasks/apply-policy';
+                policyApplyHttp.open("POST", url, false, document.getElementById("Username").value, document.getElementById("Password").value);
+                policyApplyHttp.setRequestHeader( 'Content-Type', 'application/json');
+                policyApplyHttp.send(JSON.stringify({ "policyReference": {  "link": policyReferenceURL }}));
+                return policyApplyHttp.status
+
+            }
+        </script>
+    </head>
+    <body>
+        <div id="frame">
+            <section id="top">
+                <h1 style="visibility: visible"> F5 ASM iControl Enforcer </h1>
+                <h2 style="visibility: hidden"> F5 ASM iControl Enforcing please wait!!!</h2>
+            </section>
+            <section id="leftContent">
+                <form name="Mainform" autocomplete="off">
+                    <label for="Username">Username:</label><br>
+                    <input type="text" id="Username"><br>
+                    <label for="Password">Password:</label><br>
+                    <input type="password" id="Password"><br>
+                    <label for="F5Hostname">Hostname/IP of F5 device:</label><br>
+                    <input id="F5Hostname" type="text"><br>
+                    <button type="button" onClick="getPolicyNames()">Get Policy Listing</button>
+
+                </form>
+            </section>
+
+
+            <section id="mainContent">
+                <h1> Policy List </h1>
+                    <form name="ListPolicy" autocomplete="off">
+                        <p id="policylisting"></p>
+                    </form>
+            </section>
+
+            <section id="rightContent">
+                <h1> Enforcement Status </h1>
+                <p id="signatureStatus"></p>
+            </section>
+            <footer>
+                <p>
+                    <b>Notes:</b><br>
+                    1. Please note Cross-origin resource sharing (CORS) browser protections MUST be disabled to run this page locally<br>
+                    2. You may be prompted for an SSL error; This is expected.<br>
+                    3. Although you can enforce multiple Policies at a time. F5 PS recommends only submitting one per request<br>
+                    4. Expect a delay after clicking the <b>Remove Signatures Staging</b> button. Please wait until a status is displayed in the Enforcement Status box<br>
+					5. This tool was tested with version 11.5.x, 11.5.y, and 11.6.0.  If the device is running a different version this too may need to be updated.
+                    <br>
+                    This iControl page  uses Javascript to pull a policy listing from the device.<br>
+					Only policies for DSP or MTGSP will show up for modification in this tool.<br>
+                    You are then prompted for the policies that you would like to turn off staging for in a select box.<br>
+                    Once you have selected your policies then we loop through them until they all have staging disabled for their attack signatures.<br>
+                    <br>
+                </p>
+            </footer>
+        </div>
+    </body>
+</html>
